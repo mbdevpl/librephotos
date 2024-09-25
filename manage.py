@@ -2,6 +2,9 @@
 import os
 import sys
 
+from librephotos.cli import prepare_cli
+
+
 if __name__ == "__main__":
     environment = "production"
     if os.environ.get("DEBUG", "0") == "1":
@@ -28,6 +31,7 @@ if __name__ == "__main__":
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE", f"librephotos.settings.{environment}"
     )
+    prepare_cli()
     execute_from_command_line(sys.argv)
 
     if running_tests and not do_not_collect_coverage:
