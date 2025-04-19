@@ -110,9 +110,7 @@ class PersonViewSet(viewsets.ModelViewSet):
             return Person.objects.none()
         qs = (
             Person.objects.filter(
-                ~Q(kind=Person.KIND_CLUSTER)
-                & ~Q(kind=Person.KIND_UNKNOWN)
-                & Q(cluster_owner=self.request.user)
+                Q(kind=Person.KIND_USER) & Q(cluster_owner=self.request.user)
             )
             .select_related("cover_photo", "cover_face")
             .only(
@@ -298,61 +296,54 @@ class AlbumDateViewSet(viewsets.ModelViewSet):
     pagination_class = RegularResultsSetPagination
 
     def get_queryset(self):
-        photoFilter = []
-        photoFilter.append(Q(aspect_ratio__isnull=False))
+        photo_filter = []
+        photo_filter.append(Q(aspect_ratio__isnull=False))
 
         if not self.request.user.is_anonymous and not self.request.query_params.get(
             "public"
         ):
-            photoFilter.append(Q(owner=self.request.user))
+            photo_filter.append(Q(owner=self.request.user))
         if self.request.query_params.get("favorite"):
             min_rating = self.request.user.favorite_min_rating
-            photoFilter.append(Q(rating__gte=min_rating))
+            photo_filter.append(Q(rating__gte=min_rating))
 
         if self.request.query_params.get("public"):
             if self.request.query_params.get("username"):
                 username = self.request.query_params.get("username")
-                photoFilter.append(Q(owner__username=username))
-            photoFilter.append(Q(public=True))
+                photo_filter.append(Q(owner__username=username))
+            photo_filter.append(Q(public=True))
 
         if self.request.query_params.get("hidden"):
-            photoFilter.append(Q(hidden=True))
+            photo_filter.append(Q(hidden=True))
         else:
-            photoFilter.append(Q(hidden=False))
+            photo_filter.append(Q(hidden=False))
 
         if self.request.query_params.get("video"):
-            photoFilter.append(Q(video=True))
+            photo_filter.append(Q(video=True))
 
         if self.request.query_params.get("photo"):
-            photoFilter.append(Q(video=False))
+            photo_filter.append(Q(video=False))
 
         if self.request.query_params.get("in_trashcan"):
-            photoFilter.append(Q(in_trashcan=True) & Q(removed=False))
+            photo_filter.append(Q(in_trashcan=True) & Q(removed=False))
         else:
-            photoFilter.append(Q(in_trashcan=False))
+            photo_filter.append(Q(in_trashcan=False))
 
         if self.request.query_params.get("person"):
-            photoFilter.append(
+            photo_filter.append(
                 Q(faces__person__id=self.request.query_params.get("person"))
             )
-            photoFilter.append(
-                Q(
-                    faces__person_label_probability__gte=F(
-                        "faces__photo__owner__confidence_person"
-                    )
-                )
-            )
         if self.request.query_params.get("last_modified"):
-            photoFilter = []
-            photoFilter.append(Q(owner=self.request.user))
-            photoFilter.append(
-                Q(last_modified__gte=self.request.query_params.get("last_modified"))
+            photo_filter = []
+            photo_filter.append(Q(owner=self.request.user))
+            photo_filter.append(
+                Q(exif_timestamp__gte=self.request.query_params.get("last_modified"))
             )
 
-        albumDate = AlbumDate.objects.filter(id=self.kwargs["pk"]).first()
+        album_date = AlbumDate.objects.filter(id=self.kwargs["pk"]).first()
 
         photo_qs = (
-            albumDate.photos.filter(*photoFilter)
+            album_date.photos.filter(*photo_filter)
             .prefetch_related(
                 Prefetch(
                     "owner",
@@ -394,7 +385,7 @@ class AlbumDateViewSet(viewsets.ModelViewSet):
         except EmptyPage:
             photos = paginator.page(paginator.num_pages)
 
-        return albumDate, photos, paginator.count
+        return album_date, photos, paginator.count
 
     def get_permissions(self):
         if self.request.query_params.get("public"):
@@ -476,13 +467,6 @@ class AlbumDateListViewSet(ListViewSet):
         if self.request.query_params.get("person"):
             filter.append(
                 Q(photos__faces__person__id=self.request.query_params.get("person"))
-            )
-            filter.append(
-                Q(
-                    photos__faces__person_label_probability__gte=F(
-                        "photos__faces__photo__owner__confidence_person"
-                    )
-                )
             )
         if self.request.query_params.get("last_modified"):
             filter = []

@@ -57,8 +57,34 @@ def deduplicate_faces_function(queryset):
                         similar_face.delete()
 
 
-class FaceDeduplication(admin.ModelAdmin):
+@admin.register(Face)
+class FaceAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "cluster_person",
+        "cluster_probability",
+        "classification_person",
+        "cluster",
+        "photo",
+        "person",
+    )
+    list_filter = ("person", "cluster")
+
+
+@admin.register(Photo)
+class PhotoAdmin(admin.ModelAdmin):
     actions = ["deduplicate_faces"]
+    list_display = [
+        "image_hash",
+        "owner",
+        "main_file",
+        "aspect_ratio",
+        "last_modified",
+        "added_on",
+        "width",
+        "height",
+    ]
+    list_filter = ["owner"]
 
     def deduplicate_faces(self, request, queryset):
         AsyncTask(
@@ -67,10 +93,7 @@ class FaceDeduplication(admin.ModelAdmin):
         ).run()
 
 
-# Register your models here.
-admin.site.register(Photo, FaceDeduplication)
 admin.site.register(Person)
-admin.site.register(Face)
 admin.site.register(AlbumAuto)
 admin.site.register(AlbumUser)
 admin.site.register(AlbumThing)

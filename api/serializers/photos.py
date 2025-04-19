@@ -1,5 +1,4 @@
 import json
-from typing import List
 
 from rest_framework import serializers
 
@@ -34,14 +33,21 @@ class PhotoSummarySerializer(serializers.ModelSerializer):
             "video_length",
             "rating",
             "owner",
+            "exif_gps_lat",
+            "exif_gps_lon",
+            "removed",
+            "in_trashcan",
         )
 
+    # TODO: Rename this field to image_hash
     def get_id(self, obj) -> str:
         return obj.image_hash
 
+    # TODO: Rename this field to aspect_ratio
     def get_aspectRatio(self, obj) -> float:
         return obj.aspect_ratio
 
+    # TODO: Remove this field in the future
     def get_url(self, obj) -> str:
         return obj.image_hash
 
@@ -63,6 +69,7 @@ class PhotoSummarySerializer(serializers.ModelSerializer):
         else:
             return ""
 
+    # TODO: Remove this field in the future
     def get_birthTime(self, obj) -> str:
         if obj.exif_timestamp:
             return obj.exif_timestamp
@@ -269,11 +276,55 @@ class PhotoSerializer(serializers.ModelSerializer):
 
     def get_people(self, obj) -> list:
         return [
-            {"name": f.person.name, "face_url": f.image.url, "face_id": f.id}
+            {
+                "name": (
+                    f.person.name
+                    if f.person
+                    else (
+                        f.cluster_person.name
+                        if f.cluster_person
+                        else (
+                            f.classification_person.name
+                            if f.classification_person
+                            else ""
+                        )
+                    )
+                ),
+                "type": (
+                    "user"
+                    if f.person
+                    else (
+                        "cluster"
+                        if f.cluster_person
+                        else ("classification" if f.classification_person else "")
+                    )
+                ),
+                "probability": (
+                    1
+                    if f.person
+                    else (
+                        f.cluster_probability
+                        if f.cluster_person
+                        else (
+                            f.classification_probability
+                            if f.classification_person
+                            else 0
+                        )
+                    )
+                ),
+                "location": {
+                    "top": f.location_top,
+                    "bottom": f.location_bottom,
+                    "left": f.location_left,
+                    "right": f.location_right,
+                },
+                "face_url": f.image.url,
+                "face_id": f.id,
+            }
             for f in obj.faces.all()
         ]
 
-    def get_embedded_media(self, obj: Photo) -> List[dict]:
+    def get_embedded_media(self, obj: Photo) -> list[dict]:
         def serialize_file(file):
             return {
                 "id": file.hash,

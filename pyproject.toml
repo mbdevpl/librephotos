@@ -1,15 +1,22 @@
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py311']
-include = '\.pyi?$' # all files that end with .py or .pyi
+target-version = "py311"
+extend-exclude = ["migrations", "im2txt", "blip", "places365"]
 
-[tool.pylint.master]
-load-plugins = 'pylint_django'
-django-settings-module = 'ownphotos.settings'
-disable = 'E029,C0111,C0301'
+[lint]
+select = [
+  "E",  # Pyflakes (errors)
+  "F",  # Pyflakes
+  "W",  # pycodestyle warnings
+  "I",  # isort (import sorting)
+  "N",  # PEP8 naming
+  "UP", # Pyupgrade (modern syntax)
+  "DJ", # pylint-django equivalent
+  "PL", # pylint rules
+]
+ignore = ["E501", "E203", "E231"]
 
-[tool.pylint.format]
-max-line-length = 88
-
-[tool.isort]
-profile = "black"
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

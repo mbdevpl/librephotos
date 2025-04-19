@@ -17,8 +17,8 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
-import api.util as util
-from api.directory_watcher import create_new_image, handle_new_image
+from api import util
+from api.directory_watcher import create_new_image, handle_new_image, is_valid_media
 from api.models import Photo, User
 from api.models.file import calculate_hash, calculate_hash_b64
 
@@ -45,7 +45,7 @@ class UploadPhotosChunked(ChunkedUploadView):
         jwt = request.COOKIES.get("jwt")
         if jwt is not None:
             try:
-                AccessToken(jwt)
+                token = AccessToken(jwt)
             except TokenError:
                 raise ChunkedUploadError(
                     status=http_status.HTTP_403_FORBIDDEN,
@@ -57,7 +57,7 @@ class UploadPhotosChunked(ChunkedUploadView):
                 detail="Authentication credentials were not provided",
             )
         # To-Do: Check if file is allowed type
-        user = User.objects.filter(id=request.POST.get("user")).first()
+        user = User.objects.filter(id=token["user_id"]).first()
         if not user or not user.is_authenticated:
             raise ChunkedUploadError(
                 status=http_status.HTTP_403_FORBIDDEN,
@@ -65,8 +65,7 @@ class UploadPhotosChunked(ChunkedUploadView):
             )
 
     def create_chunked_upload(self, save=False, **attrs):
-        """
-        Creates new chunked upload instance. Called if no 'upload_id' is
+        """Creates new chunked upload instance. Called if no 'upload_id' is
         found in the POST data.
         """
         chunked_upload = self.model(**attrs)
@@ -88,7 +87,7 @@ class UploadPhotosChunkedComplete(ChunkedUploadCompleteView):
         jwt = request.COOKIES.get("jwt")
         if jwt is not None:
             try:
-                AccessToken(jwt)
+                token = AccessToken(jwt)
             except TokenError:
                 raise ChunkedUploadError(
                     status=http_status.HTTP_403_FORBIDDEN,
@@ -99,7 +98,7 @@ class UploadPhotosChunkedComplete(ChunkedUploadCompleteView):
                 status=http_status.HTTP_403_FORBIDDEN,
                 detail="Authentication credentials were not provided",
             )
-        user = User.objects.filter(id=request.POST.get("user")).first()
+        user = User.objects.filter(id=token["user_id"]).first()
         if not user or not user.is_authenticated:
             raise ChunkedUploadError(
                 status=http_status.HTTP_403_FORBIDDEN,
@@ -107,7 +106,32 @@ class UploadPhotosChunkedComplete(ChunkedUploadCompleteView):
             )
 
     def on_completion(self, uploaded_file, request):
-        user = User.objects.filter(id=request.POST.get("user")).first()
+        jwt = request.COOKIES.get("jwt")
+        if jwt is not None:
+            try:
+                token = AccessToken(jwt)
+            except TokenError:
+                raise ChunkedUploadError(
+                    status=http_status.HTTP_403_FORBIDDEN,
+                    detail="Authentication credentials were invalid",
+                )
+        else:
+            raise ChunkedUploadError(
+                status=http_status.HTTP_403_FORBIDDEN,
+                detail="Authentication credentials were not provided",
+            )
+
+        if not is_valid_media(uploaded_file.file.path):
+            chunked_upload = get_object_or_404(
+                ChunkedUpload, upload_id=request.POST.get("upload_id")
+            )
+            chunked_upload.delete(delete_file=True)
+            raise ChunkedUploadError(
+                status=http_status.HTTP_400_BAD_REQUEST,
+                detail="File type not allowed",
+            )
+
+        user = User.objects.filter(id=token["user_id"]).first()
         # Sanitize file name
         filename = get_valid_filename(request.POST.get("filename"))
 
@@ -138,7 +162,7 @@ class UploadPhotosChunkedComplete(ChunkedUploadCompleteView):
                 if existing_photo_hash == image_hash:
                     # File already exist, do not copy it in the upload folder
                     util.logger.info(
-                        "Photo {} duplicated with hash {} ".format(filename, image_hash)
+                        f"Photo {filename} duplicated with hash {image_hash} "
                     )
                     photo_path = ""
                 else:
@@ -167,6 +191,4 @@ class UploadPhotosChunkedComplete(ChunkedUploadCompleteView):
             chain.run()
 
         else:
-            util.logger.info(
-                "Photo {} duplicated with hash {} ".format(filename, image_hash)
-            )
+            util.logger.info(f"Photo {filename} duplicated with hash {image_hash} ")

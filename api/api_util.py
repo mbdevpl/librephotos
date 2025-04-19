@@ -214,7 +214,9 @@ def get_search_term_examples(user):
             terms_time = [str(p.exif_timestamp.year)]
         terms_people = []
         if p.faces.count() > 0:
-            terms_people = [f.person.name.split(" ")[0] for f in faces]
+            terms_people = [
+                f.person.name.split(" ")[0] if f.person else "" for f in faces
+            ]
         terms_things = ""
         if p.captions_json and p.captions_json["places365"] is not None:
             terms_things = p.captions_json["places365"]["categories"]
@@ -295,7 +297,7 @@ def median_value(queryset, term):
 def calc_megabytes(bytes):
     if bytes == 0 or bytes is None:
         return 0
-    return round(((bytes / 1024) / 1024))
+    return round((bytes / 1024) / 1024)
 
 
 def get_server_stats():
@@ -661,22 +663,16 @@ def get_count_stats(user):
         & Q(photo__owner=user)
     ).count()
     num_labeled_faces = Face.objects.filter(
-        Q(person_label_is_inferred=False)
-        & ~(
-            Q(person__name__exact="unknown")
-            | Q(person__name__exact=Person.UNKNOWN_PERSON_NAME)
-        )
-        & Q(photo__owner=user)
-        & Q(photo__hidden=False)
+        Q(person__isnull=False) & Q(photo__owner=user) & Q(photo__hidden=False)
     ).count()
     num_inferred_faces = Face.objects.filter(
-        Q(person_label_is_inferred=True) & Q(photo__owner=user) & Q(photo__hidden=False)
+        Q(person=True) & Q(photo__owner=user) & Q(photo__hidden=False)
     ).count()
     num_people = (
         Person.objects.filter(
             Q(faces__photo__hidden=False)
             & Q(faces__photo__owner=user)
-            & Q(faces__person_label_is_inferred=False)
+            & Q(faces__person__isnull=False)
         )
         .distinct()
         .annotate(viewable_face_count=Count("faces"))
@@ -846,18 +842,14 @@ def get_photo_month_counts(user):
 def get_searchterms_wordcloud(user):
     query = {}
     out = {"captions": [], "people": [], "locations": []}
-    query[
-        "captions"
-    ] = """
+    query["captions"] = """
         with captionList as (
             select unnest(regexp_split_to_array(search_captions,' , ')) caption
             from api_photo where owner_id = %(userid)s
         )
         select caption, count(*) from captionList group by caption order by count(*) desc limit 100;
     """
-    query[
-        "people"
-    ] = """
+    query["people"] = """
         with NameList as (
             select api_person.name
             from api_photo join api_face on image_hash = api_face.photo_id
@@ -866,9 +858,7 @@ def get_searchterms_wordcloud(user):
         )
         select name, count(*) from NameList group by name order by count(*) desc limit 100;
     """
-    query[
-        "locations"
-    ] = """
+    query["locations"] = """
          with arrayloctable as (
             select jsonb_array_elements(jsonb_extract_path(api_photo.geolocation_json,  'features')::jsonb) arrayloc , image_hash
             from api_photo where owner_id = %(userid)s

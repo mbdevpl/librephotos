@@ -28,7 +28,7 @@ class RecentlyAddedPhotoListViewSet(ListViewSet):
     pagination_class = HugeResultsSetPagination
 
     def get_queryset(self):
-        latestDate = (
+        latest_date = (
             Photo.visible.filter(Q(owner=self.request.user))
             .only("added_on")
             .order_by("-added_on")
@@ -40,9 +40,9 @@ class RecentlyAddedPhotoListViewSet(ListViewSet):
                 Q(owner=self.request.user)
                 & Q(aspect_ratio__isnull=False)
                 & Q(
-                    added_on__year=latestDate.year,
-                    added_on__month=latestDate.month,
-                    added_on__day=latestDate.day,
+                    added_on__year=latest_date.year,
+                    added_on__month=latest_date.month,
+                    added_on__day=latest_date.day,
                 )
             )
             .prefetch_related(
@@ -58,7 +58,7 @@ class RecentlyAddedPhotoListViewSet(ListViewSet):
 
     def list(self, *args, **kwargs):
         queryset = self.get_queryset()
-        latestDate = (
+        latest_date = (
             Photo.visible.filter(Q(owner=self.request.user))
             .only("added_on")
             .order_by("-added_on")
@@ -66,7 +66,7 @@ class RecentlyAddedPhotoListViewSet(ListViewSet):
             .added_on
         )
         serializer = PhotoSummarySerializer(queryset, many=True)
-        return Response({"date": latestDate, "results": serializer.data})
+        return Response({"date": latest_date, "results": serializer.data})
 
 
 class NoTimestampPhotoViewSet(ListViewSet):
@@ -94,7 +94,7 @@ class NoTimestampPhotoViewSet(ListViewSet):
         )
 
     def list(self, *args, **kwargs):
-        return super(NoTimestampPhotoViewSet, self).list(*args, **kwargs)
+        return super().list(*args, **kwargs)
 
 
 class SetPhotosDeleted(APIView):
@@ -110,9 +110,7 @@ class SetPhotosDeleted(APIView):
                 photo = Photo.objects.get(image_hash=image_hash)
             except Photo.DoesNotExist:
                 logger.warning(
-                    "Could not set photo {} to hidden. It does not exist.".format(
-                        image_hash
-                    )
+                    f"Could not set photo {image_hash} to hidden. It does not exist."
                 )
                 continue
             if photo.owner == request.user and photo.in_trashcan != val_hidden:
@@ -124,15 +122,11 @@ class SetPhotosDeleted(APIView):
 
         if val_hidden:
             logger.info(
-                "{} photos were set hidden. {} photos were already deleted.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set hidden. {len(not_updated)} photos were already deleted."
             )
         else:
             logger.info(
-                "{} photos were set unhidden. {} photos were already recovered.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set unhidden. {len(not_updated)} photos were already recovered."
             )
         return Response(
             {
@@ -158,9 +152,7 @@ class SetPhotosFavorite(APIView):
                 photo = Photo.objects.get(image_hash=image_hash)
             except Photo.DoesNotExist:
                 logger.warning(
-                    "Could not set photo {} to favorite. It does not exist.".format(
-                        image_hash
-                    )
+                    f"Could not set photo {image_hash} to favorite. It does not exist."
                 )
                 continue
             if photo.owner == request.user:
@@ -179,15 +171,11 @@ class SetPhotosFavorite(APIView):
 
         if val_favorite:
             logger.info(
-                "{} photos were added to favorites. {} photos were already in favorites.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were added to favorites. {len(not_updated)} photos were already in favorites."
             )
         else:
             logger.info(
-                "{} photos were removed from favorites. {} photos were already not in favorites.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were removed from favorites. {len(not_updated)} photos were already not in favorites."
             )
         return Response(
             {
@@ -212,9 +200,7 @@ class SetPhotosHidden(APIView):
                 photo = Photo.objects.get(image_hash=image_hash)
             except Photo.DoesNotExist:
                 logger.warning(
-                    "Could not set photo {} to hidden. It does not exist.".format(
-                        image_hash
-                    )
+                    f"Could not set photo {image_hash} to hidden. It does not exist."
                 )
                 continue
             if photo.owner == request.user and photo.hidden != val_hidden:
@@ -226,15 +212,11 @@ class SetPhotosHidden(APIView):
 
         if val_hidden:
             logger.info(
-                "{} photos were set hidden. {} photos were already hidden.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set hidden. {len(not_updated)} photos were already hidden."
             )
         else:
             logger.info(
-                "{} photos were set unhidden. {} photos were already unhidden.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set unhidden. {len(not_updated)} photos were already unhidden."
             )
         return Response(
             {
@@ -272,11 +254,7 @@ class PhotoViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        if (
-            self.action == "list"
-            or self.action == "retrieve"
-            or self.action == "summary"
-        ):
+        if self.action in ("list", "retrieve", "summary"):
             permission_classes = [IsPhotoOrAlbumSharedTo]
         else:  # pragma: no cover - unused
             permission_classes = [IsAdminUser or IsOwnerOrReadOnly]
@@ -289,10 +267,10 @@ class PhotoViewSet(viewsets.ModelViewSet):
             return Photo.objects.order_by("-exif_timestamp")
 
     def retrieve(self, *args, **kwargs):
-        return super(PhotoViewSet, self).retrieve(*args, **kwargs)
+        return super().retrieve(*args, **kwargs)
 
     def list(self, *args, **kwargs):  # pragma: no cover - unused
-        return super(PhotoViewSet, self).list(*args, **kwargs)
+        return super().list(*args, **kwargs)
 
 
 class PhotoEditViewSet(viewsets.ModelViewSet):
@@ -305,12 +283,12 @@ class PhotoEditViewSet(viewsets.ModelViewSet):
     def retrieve(
         self, *args, **kwargs
     ):  # pragma: no cover TODO(sickelap): remove unused code
-        return super(PhotoEditViewSet, self).retrieve(*args, **kwargs)
+        return super().retrieve(*args, **kwargs)
 
     def list(
         self, *args, **kwargs
     ):  # pragma: no cover TODO(sickelap): remove unused code
-        return super(PhotoEditViewSet, self).list(*args, **kwargs)
+        return super().list(*args, **kwargs)
 
 
 class SetPhotosShared(APIView):
@@ -335,35 +313,31 @@ class SetPhotosShared(APIView):
         ])
         """
 
-        ThroughModel = Photo.shared_to.through
+        through_model = Photo.shared_to.through
 
         if shared:
-            already_existing = ThroughModel.objects.filter(
+            already_existing = through_model.objects.filter(
                 user_id=target_user_id, photo_id__in=image_hashes
             ).only("photo_id")
             already_existing_image_hashes = [e.photo_id for e in already_existing]
             # print(already_existing)
-            res = ThroughModel.objects.bulk_create(
+            res = through_model.objects.bulk_create(
                 [
-                    ThroughModel(user_id=target_user_id, photo_id=image_hash)
+                    through_model(user_id=target_user_id, photo_id=image_hash)
                     for image_hash in image_hashes
                     if image_hash not in already_existing_image_hashes
                 ]
             )
             logger.info(
-                "Shared {}'s {} images to user {}".format(
-                    request.user.id, len(res), target_user_id
-                )
+                f"Shared {request.user.id}'s {len(res)} images to user {target_user_id}"
             )
             res_count = len(res)
         else:
-            res = ThroughModel.objects.filter(
+            res = through_model.objects.filter(
                 user_id=target_user_id, photo_id__in=image_hashes
             ).delete()
             logger.info(
-                "Unshared {}'s {} images to user {}".format(
-                    request.user.id, len(res), target_user_id
-                )
+                f"Unshared {request.user.id}'s {len(res)} images to user {target_user_id}"
             )
             res_count = res[0]
 
@@ -383,9 +357,7 @@ class SetPhotosPublic(APIView):
                 photo = Photo.objects.get(image_hash=image_hash)
             except Photo.DoesNotExist:
                 logger.warning(
-                    "Could not set photo {} to public. It does not exist.".format(
-                        image_hash
-                    )
+                    f"Could not set photo {image_hash} to public. It does not exist."
                 )
                 continue
             if photo.owner == request.user and photo.public != val_public:
@@ -397,15 +369,11 @@ class SetPhotosPublic(APIView):
 
         if val_public:
             logger.info(
-                "{} photos were set public. {} photos were already public.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set public. {len(not_updated)} photos were already public."
             )
         else:
             logger.info(
-                "{} photos were set private. {} photos were already public.".format(
-                    len(updated), len(not_updated)
-                )
+                f"{len(updated)} photos were set private. {len(not_updated)} photos were already public."
             )
 
         return Response(

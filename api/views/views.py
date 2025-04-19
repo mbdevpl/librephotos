@@ -21,7 +21,7 @@ from django.views.decorators.vary import vary_on_cookie
 from django_q.tasks import AsyncTask, Chain
 from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework import viewsets
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView, exception_handler
 from rest_framework_simplejwt.exceptions import TokenError
@@ -62,15 +62,23 @@ class AlbumUserEditViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def retrieve(self, *args, **kwargs):
-        return super(AlbumUserEditViewSet, self).retrieve(*args, **kwargs)
+        return super().retrieve(*args, **kwargs)
 
     def list(self, *args, **kwargs):
-        return super(AlbumUserEditViewSet, self).list(*args, **kwargs)
+        return super().list(*args, **kwargs)
 
     def get_queryset(self):
         if self.request.user.is_anonymous:
             return AlbumUser.objects.none()
         return AlbumUser.objects.filter(owner=self.request.user).order_by("title")
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            self.permission_classes = (IsAuthenticated,)
+        else:
+            self.permission_classes = (IsAdminUser,)
+
+        return super().get_permissions()
 
 
 # API Views
@@ -88,7 +96,7 @@ class SiteSettingsView(APIView):
         out["allow_registration"] = site_config.ALLOW_REGISTRATION
         out["allow_upload"] = site_config.ALLOW_UPLOAD
         out["skip_patterns"] = site_config.SKIP_PATTERNS
-        out["heavyweight_process"] = site_config.HEAVYWEIGHT_PROCESS
+        out["heavyweight_process"] = 0
         out["map_api_provider"] = site_config.MAP_API_PROVIDER
         out["map_api_key"] = site_config.MAP_API_KEY
         out["captioning_model"] = site_config.CAPTIONING_MODEL
@@ -103,8 +111,6 @@ class SiteSettingsView(APIView):
             site_config.ALLOW_UPLOAD = request.data["allow_upload"]
         if "skip_patterns" in request.data.keys():
             site_config.SKIP_PATTERNS = request.data["skip_patterns"]
-        if "heavyweight_process" in request.data.keys():
-            site_config.HEAVYWEIGHT_PROCESS = request.data["heavyweight_process"]
         if "map_api_provider" in request.data.keys():
             site_config.MAP_API_PROVIDER = request.data["map_api_provider"]
         if "map_api_key" in request.data.keys():
@@ -114,7 +120,7 @@ class SiteSettingsView(APIView):
         if "llm_model" in request.data.keys():
             site_config.LLM_MODEL = request.data["llm_model"]
         if not do_all_models_exist():
-            AsyncTask(download_models, User.objects.get(id=request.user)).run()
+            AsyncTask(download_models, User.objects.get(id=request.user.id)).run()
 
         return self.get(request, format=format)
 
@@ -130,9 +136,7 @@ class SetUserAlbumShared(APIView):
             target_user = User.objects.get(id=target_user_id)
         except User.DoesNotExist:
             logger.warning(
-                "Cannot share album to user: target user_id {} does not exist".format(
-                    target_user_id
-                )
+                f"Cannot share album to user: target user_id {target_user_id} does not exist"
             )
             return Response(
                 {"status": False, "message": "No such user"}, status_code=400
@@ -142,9 +146,7 @@ class SetUserAlbumShared(APIView):
             user_album_to_share = AlbumUser.objects.get(id=user_album_id)
         except AlbumUser.DoesNotExist:
             logger.warning(
-                "Cannot share album to user: source user_album_id {} does not exist".format(
-                    user_album_id
-                )
+                f"Cannot share album to user: source user_album_id {user_album_id} does not exist"
             )
             return Response(
                 {"status": False, "message": "No such album"}, status_code=400
@@ -152,9 +154,7 @@ class SetUserAlbumShared(APIView):
 
         if user_album_to_share.owner != request.user:
             logger.warning(
-                "Cannot share album to user: source user_album_id {} does not belong to user_id {}".format(
-                    user_album_id, request.user.id
-                )
+                f"Cannot share album to user: source user_album_id {user_album_id} does not belong to user_id {request.user.id}"
             )
             return Response(
                 {"status": False, "message": "You cannot share an album you don't own"},
@@ -164,16 +164,12 @@ class SetUserAlbumShared(APIView):
         if shared:
             user_album_to_share.shared_to.add(target_user)
             logger.info(
-                "Shared user {}'s album {} to user {}".format(
-                    request.user.id, user_album_id, target_user_id
-                )
+                f"Shared user {request.user.id}'s album {user_album_id} to user {target_user_id}"
             )
         else:
             user_album_to_share.shared_to.remove(target_user)
             logger.info(
-                "Unshared user {}'s album {} to user {}".format(
-                    request.user.id, user_album_id, target_user_id
-                )
+                f"Unshared user {request.user.id}'s album {user_album_id} to user {target_user_id}"
             )
 
         user_album_to_share.save()
@@ -204,7 +200,8 @@ class ImageTagView(APIView):
     def get(self, request, format=None):
         # Add an exception for the directory '/code'
         subprocess.run(
-            ["git", "config", "--global", "--add", "safe.directory", "/code"]
+            ["git", "config", "--global", "--add", "safe.directory", "/code"],
+            check=False,
         )
 
         # Get the current commit hash
@@ -329,7 +326,7 @@ class MediaAccessView(APIView):
     permission_classes = (AllowAny,)
 
     def _get_protected_media_url(self, path, fname):
-        return "protected_media/{}/{}".format(path, fname)
+        return f"protected_media/{path}/{fname}"
 
     # @silk_profile(name='media')
     def get(self, request, path, fname, format=None):
@@ -408,15 +405,14 @@ class VideoTranscoder:
 
 
 def gen(transcoder):
-    for resp in iter(transcoder.process.stdout.readline, b""):
-        yield resp
+    yield from iter(transcoder.process.stdout.readline, b"")
 
 
 class MediaAccessFullsizeOriginalView(APIView):
     permission_classes = (AllowAny,)
 
     def _get_protected_media_url(self, path, fname):
-        return "/protected_media{}/{}".format(path, fname)
+        return f"/protected_media{path}/{fname}"
 
     def _generate_response(self, photo, path, fname, transcode_videos):
         if "thumbnail" in path:
@@ -604,7 +600,6 @@ class MediaAccessFullsizeOriginalView(APIView):
                 photo = Photo.objects.get(image_hash=image_hash)
             except Photo.DoesNotExist:
                 return HttpResponse(status=404)
-
             if photo.main_file.path.startswith("/nextcloud_media/"):
                 internal_path = photo.main_file.path.replace(
                     "/nextcloud_media/", "/nextcloud_original/"
@@ -617,15 +612,16 @@ class MediaAccessFullsizeOriginalView(APIView):
             else:
                 # If, for some reason, the file is in a weird place, handle that.
                 internal_path = None
-
             internal_path = quote(internal_path)
-
             # grant access if the requested photo is public
             if photo.public:
                 response = HttpResponse()
                 mime = magic.Magic(mime=True)
                 filename = mime.from_file(photo.main_file.path)
-                response["Content-Type"] = filename
+                if photo.video:
+                    response["Content-Type"] = filename
+                else:
+                    response["Content-Type"] = "image/webp"
                 response["X-Accel-Redirect"] = internal_path
                 return response
 
@@ -647,7 +643,10 @@ class MediaAccessFullsizeOriginalView(APIView):
                 response = HttpResponse()
                 mime = magic.Magic(mime=True)
                 filename = mime.from_file(photo.main_file.path)
-                response["Content-Type"] = filename
+                if photo.video:
+                    response["Content-Type"] = filename
+                else:
+                    response["Content-Type"] = "image/webp"
                 response["Content-Disposition"] = 'inline; filename="{}"'.format(
                     photo.main_file.path.split("/")[-1]
                 )
@@ -659,7 +658,7 @@ class MediaAccessFullsizeOriginalView(APIView):
                     return HttpResponse(status=404)
                 except PermissionError:
                     return HttpResponse(status=403)
-                except IOError:
+                except OSError:
                     return HttpResponse(status=500)
                 except Exception:
                     raise

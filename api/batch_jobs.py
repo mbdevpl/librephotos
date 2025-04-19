@@ -3,10 +3,9 @@ import uuid
 from datetime import datetime
 
 import pytz
-from constance import config as site_config
 from django.db.models import Q
 
-import api.util as util
+from api import util
 from api.image_similarity import build_image_similarity_index
 from api.models.long_running_job import LongRunningJob
 from api.models.photo import Photo
@@ -31,14 +30,14 @@ def batch_calculate_clip_embedding(user):
     lrj.progress_target = count
     lrj.save()
     if not torch.cuda.is_available():
-        num_threads = max(1, site_config.HEAVYWEIGHT_PROCESS)
+        num_threads = 1
         torch.set_num_threads(num_threads)
         os.environ["OMP_NUM_THREADS"] = str(num_threads)
     else:
         torch.multiprocessing.set_start_method("spawn", force=True)
 
     BATCH_SIZE = 64
-    util.logger.info("Using threads: {}".format(torch.get_num_threads()))
+    util.logger.info(f"Using threads: {torch.get_num_threads()}")
 
     done_count = 0
     while done_count < count:
@@ -68,7 +67,7 @@ def batch_calculate_clip_embedding(user):
                 obj.clip_embeddings_magnitude = magnitude
                 obj.save()
         except Exception as e:
-            util.logger.error("Error calculating clip embeddings: {}".format(e))
+            util.logger.error(f"Error calculating clip embeddings: {e}")
 
         lrj.progress_current = done_count
         lrj.progress_target = count

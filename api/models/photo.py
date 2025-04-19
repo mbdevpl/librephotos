@@ -13,10 +13,8 @@ from django.db import models
 from django.db.models import Q
 from django.db.utils import IntegrityError
 
-import api.date_time_extractor as date_time_extractor
-import api.face_extractor as face_extractor
 import api.models
-import api.util as util
+from api import date_time_extractor, face_extractor, util
 from api.exif_tags import Tags
 from api.geocode import GEOCODE_VERSION
 from api.geocode.geocode import reverse_geocode
@@ -25,11 +23,11 @@ from api.llm import generate_prompt
 from api.models.file import File
 from api.models.user import User, get_deleted_user
 from api.thumbnails import (
-    createAnimatedThumbnail,
-    createThumbnail,
-    createThumbnailForVideo,
-    doesStaticThumbnailExists,
-    doesVideoThumbnailExists,
+    create_animated_thumbnail,
+    create_thumbnail,
+    create_thumbnail_for_video,
+    does_static_thumbnail_exist,
+    does_video_thumbnail_exist,
 )
 from api.util import get_metadata, logger
 
@@ -212,13 +210,12 @@ class Photo(models.Model):
             if commit:
                 self.save()
             util.logger.info(
-                "generated im2txt captions for image %s with SiteConfig %s with Blip: %s and Onnx: %s caption: %s"
-                % (image_path, site_config.CAPTIONING_MODEL, blip, onnx, caption)
+                f"generated im2txt captions for image {image_path} with SiteConfig {site_config.CAPTIONING_MODEL} with Blip: {blip} and Onnx: {onnx} caption: {caption}"
             )
             return True
         except Exception:
             util.logger.exception(
-                "could not generate im2txt captions for image %s" % image_path
+                f"could not generate im2txt captions for image {image_path}"
             )
             return False
 
@@ -232,8 +229,7 @@ class Photo(models.Model):
                 self.save(update_fields=["captions_json", "search_captions"])
 
             util.logger.info(
-                "saved captions for image %s. caption: %s. captions_json: %s."
-                % (image_path, caption, self.captions_json)
+                f"saved captions for image {image_path}. caption: {caption}. captions_json: {self.captions_json}."
             )
 
             hashtags = [
@@ -260,7 +256,7 @@ class Photo(models.Model):
                     album_thing.save()
             return True
         except Exception:
-            util.logger.exception("could not save captions for image %s" % image_path)
+            util.logger.exception(f"could not save captions for image {image_path}")
             return False
 
     def _recreate_search_captions(self):
@@ -282,7 +278,8 @@ class Photo(models.Model):
             search_captions += user_caption + " "
 
         for face in api.models.face.Face.objects.filter(photo=self).all():
-            search_captions += face.person.name + " "
+            if face.person:
+                search_captions += face.person.name + " "
 
         for file in self.files.all():
             search_captions += file.path + " "
@@ -298,7 +295,7 @@ class Photo(models.Model):
 
         self.search_captions = search_captions.strip()  # Remove trailing space
         util.logger.debug(
-            "Recreated search captions for image %s." % (self.thumbnail_big.path)
+            f"Recreated search captions for image {self.thumbnail_big.path}."
         )
         self.save()
 
@@ -362,74 +359,72 @@ class Photo(models.Model):
 
             if commit:
                 self.save()
-            util.logger.info(
-                "generated places365 captions for image %s." % (image_path)
-            )
+            util.logger.info(f"generated places365 captions for image {image_path}.")
         except Exception as e:
             util.logger.exception(
-                "could not generate captions for image %s" % image_path
+                f"could not generate captions for image {self.main_file.path}"
             )
             raise e
 
     def _generate_thumbnail(self, commit=True):
         try:
-            if not doesStaticThumbnailExists("thumbnails_big", self.image_hash):
+            if not does_static_thumbnail_exist("thumbnails_big", self.image_hash):
                 if not self.video:
-                    createThumbnail(
-                        inputPath=self.main_file.path,
-                        outputHeight=1080,
-                        outputPath="thumbnails_big",
+                    create_thumbnail(
+                        input_path=self.main_file.path,
+                        output_height=1080,
+                        output_path="thumbnails_big",
                         hash=self.image_hash,
-                        fileType=".webp",
+                        file_type=".webp",
                     )
                 else:
-                    createThumbnailForVideo(
-                        inputPath=self.main_file.path,
-                        outputPath="thumbnails_big",
+                    create_thumbnail_for_video(
+                        input_path=self.main_file.path,
+                        output_path="thumbnails_big",
                         hash=self.image_hash,
-                        fileType=".webp",
+                        file_type=".webp",
                     )
 
-            if not self.video and not doesStaticThumbnailExists(
+            if not self.video and not does_static_thumbnail_exist(
                 "square_thumbnails", self.image_hash
             ):
-                createThumbnail(
-                    inputPath=self.main_file.path,
-                    outputHeight=500,
-                    outputPath="square_thumbnails",
+                create_thumbnail(
+                    input_path=self.main_file.path,
+                    output_height=500,
+                    output_path="square_thumbnails",
                     hash=self.image_hash,
-                    fileType=".webp",
+                    file_type=".webp",
                 )
-            if self.video and not doesVideoThumbnailExists(
+            if self.video and not does_video_thumbnail_exist(
                 "square_thumbnails", self.image_hash
             ):
-                createAnimatedThumbnail(
-                    inputPath=self.main_file.path,
-                    outputHeight=500,
-                    outputPath="square_thumbnails",
+                create_animated_thumbnail(
+                    input_path=self.main_file.path,
+                    output_height=500,
+                    output_path="square_thumbnails",
                     hash=self.image_hash,
-                    fileType=".mp4",
+                    file_type=".mp4",
                 )
 
-            if not self.video and not doesStaticThumbnailExists(
+            if not self.video and not does_static_thumbnail_exist(
                 "square_thumbnails_small", self.image_hash
             ):
-                createThumbnail(
-                    inputPath=self.main_file.path,
-                    outputHeight=250,
-                    outputPath="square_thumbnails_small",
+                create_thumbnail(
+                    input_path=self.main_file.path,
+                    output_height=250,
+                    output_path="square_thumbnails_small",
                     hash=self.image_hash,
-                    fileType=".webp",
+                    file_type=".webp",
                 )
-            if self.video and not doesVideoThumbnailExists(
+            if self.video and not does_video_thumbnail_exist(
                 "square_thumbnails_small", self.image_hash
             ):
-                createAnimatedThumbnail(
-                    inputPath=self.main_file.path,
-                    outputHeight=250,
-                    outputPath="square_thumbnails_small",
+                create_animated_thumbnail(
+                    input_path=self.main_file.path,
+                    output_height=250,
+                    output_path="square_thumbnails_small",
                     hash=self.image_hash,
-                    fileType=".mp4",
+                    file_type=".mp4",
                 )
             filetype = ".webp"
             if self.video:
@@ -447,7 +442,7 @@ class Photo(models.Model):
                 self.save()
         except Exception as e:
             util.logger.exception(
-                "could not generate thumbnail for image %s" % self.main_file.path
+                f"could not generate thumbnail for image {self.main_file.path}"
             )
             raise e
 
@@ -496,8 +491,7 @@ class Photo(models.Model):
                 self.save()
         except Exception as e:
             util.logger.exception(
-                "could not calculate aspect ratio for image %s"
-                % self.thumbnail_big.path
+                f"could not calculate aspect ratio for image {self.thumbnail_big.path}"
             )
             raise e
 
@@ -714,7 +708,7 @@ class Photo(models.Model):
                     )
                     person.save()
                 else:
-                    person = api.models.person.get_unknown_person(owner=self.owner)
+                    person = None
 
                 face_image = big_thumbnail_image[top:bottom, left:right]
                 face_image = PIL.Image.fromarray(face_image)
@@ -755,27 +749,20 @@ class Photo(models.Model):
                 face.image.save(image_path, ContentFile(face_io.getvalue()))
                 face_io.close()
                 face.save()
-            logger.info(
-                "image {}: {} face(s) saved".format(
-                    self.image_hash, len(face_locations)
-                )
-            )
+            logger.info(f"image {self.image_hash}: {len(face_locations)} face(s) saved")
         except IntegrityError:
             # When using multiple processes, then we can save at the same time, which leads to this error
             if self.files.count() > 0:
                 # print out the location of the image only if we have a path
-                logger.info("image {}: rescan face failed".format(self.main_file.path))
+                logger.info(f"image {self.main_file.path}: rescan face failed")
             if not second_try:
                 self._extract_faces(True)
+            elif self.files.count() > 0:
+                logger.error(f"image {self.main_file.path}: rescan face failed")
             else:
-                if self.files.count() > 0:
-                    logger.error(
-                        "image {}: rescan face failed".format(self.main_file.path)
-                    )
-                else:
-                    logger.error("image {}: rescan face failed".format(self))
+                logger.error(f"image {self}: rescan face failed")
         except Exception as e:
-            logger.error("image {}: scan face failed".format(self))
+            logger.error(f"image {self}: scan face failed")
             raise e
 
     def _add_to_album_thing(self):
@@ -833,12 +820,12 @@ class Photo(models.Model):
             self.dominant_color = dominant_color
             self.save()
         except Exception:
-            logger.info("Cannot calculate dominant color {} object".format(self))
+            logger.info(f"Cannot calculate dominant color {self} object")
 
     def manual_delete(self):
         for file in self.files.all():
             if os.path.isfile(file.path):
-                logger.info("Removing photo {}".format(file.path))
+                logger.info(f"Removing photo {file.path}")
                 os.remove(file.path)
                 file.delete()
             self.files.set([])
@@ -852,30 +839,25 @@ class Photo(models.Model):
         for file in self.files.all():
             if file.path == duplicate_path:
                 if not os.path.isfile(duplicate_path):
-                    logger.info(
-                        "Path does not lead to a valid file: {}".format(duplicate_path)
-                    )
+                    logger.info(f"Path does not lead to a valid file: {duplicate_path}")
                     self.files.remove(file)
                     file.delete()
                     self.save()
                     return False
-                logger.info("Removing photo {}".format(duplicate_path))
+                logger.info(f"Removing photo {duplicate_path}")
                 os.remove(duplicate_path)
                 self.files.remove(file)
                 self.save()
                 file.delete()
                 return True
-        logger.info("Path is not valid: {}".format(duplicate_path))
+        logger.info(f"Path is not valid: {duplicate_path}")
         return False
 
     def _set_embedded_media(self, obj):
         return obj.main_file.embedded_media
 
     def __str__(self):
-        return (
-            "{}".format(self.image_hash)
-            + " - "
-            + "{}".format(self.owner)
-            + " - "
-            + "{}".format(self.main_file.path)
+        main_file_path = (
+            self.main_file.path if self.main_file is not None else "No main file"
         )
+        return f"{self.image_hash} - {self.owner} - {main_file_path}"

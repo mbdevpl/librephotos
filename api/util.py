@@ -10,15 +10,23 @@ logger = logging.getLogger("ownphotos")
 formatter = logging.Formatter(
     "%(asctime)s : %(filename)s : %(funcName)s : %(lineno)s : %(levelname)s : %(message)s"
 )
-fileMaxByte = 256 * 1024 * 200  # 100MB
-fileHandler = logging.handlers.RotatingFileHandler(
+FILE_MAX_BYTE = 256 * 1024 * 200  # 100MB
+FILE_HANDLER = logging.handlers.RotatingFileHandler(
     os.path.join(settings.LOGS_ROOT, "ownphotos.log"),
-    maxBytes=fileMaxByte,
+    maxBytes=FILE_MAX_BYTE,
     backupCount=10,
 )
-fileHandler.setFormatter(formatter)
-logger.addHandler(fileHandler)
+FILE_HANDLER.setFormatter(formatter)
+logger.addHandler(FILE_HANDLER)
 logger.setLevel(logging.INFO)
+
+
+def is_valid_path(path, root_path):
+    # Resolve absolute paths to prevent directory traversal attacks
+    abs_path = os.path.abspath(path)
+    abs_root = os.path.abspath(root_path)
+
+    return abs_path.startswith(abs_root)
 
 
 def is_number(s):
@@ -30,8 +38,7 @@ def is_number(s):
 
 
 def convert_to_degrees(values):
-    """
-    Helper function to convert the GPS coordinates stored in the EXIF to degrees in float format
+    """Helper function to convert the GPS coordinates stored in the EXIF to degrees in float format
     :param value:
     :type value: exifread.utils.Ratio
     :rtype: float
@@ -55,8 +62,7 @@ weekdays = {
 
 
 def get_sidecar_files_in_priority_order(media_file):
-    """
-    Returns a list of possible XMP sidecar files for *media_file*, ordered
+    """Returns a list of possible XMP sidecar files for *media_file*, ordered
     by priority.
 
     """
@@ -82,8 +88,7 @@ def _get_existing_metadata_files_reversed(media_file, include_sidecar_files):
 
 
 def get_metadata(media_file, tags, try_sidecar=True, struct=False):
-    """
-    Get values for each metadata tag in *tags* from *media_file*.
+    """Get values for each metadata tag in *tags* from *media_file*.
     If *try_sidecar* is `True`, use the value set in any XMP sidecar file
     stored alongside *media_file*.
     If *struct* is `True`, use the exiftool instance which returns structured data
@@ -92,7 +97,6 @@ def get_metadata(media_file, tags, try_sidecar=True, struct=False):
     tag was not found.
 
     """
-
     files_by_reverse_priority = _get_existing_metadata_files_reversed(
         media_file, try_sidecar
     )

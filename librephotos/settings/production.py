@@ -16,6 +16,7 @@ BLIP_ROOT = os.path.join(MEDIA_ROOT, "data_models", "blip")
 PLACES365_ROOT = os.path.join(MEDIA_ROOT, "data_models", "places365", "model")
 CLIP_ROOT = os.path.join(MEDIA_ROOT, "data_models", "clip-embeddings")
 LOGS_ROOT = BASE_LOGS
+DEMO_SITE = os.environ.get("DEMO_SITE", "False") != "False"
 
 WSGI_APPLICATION = "librephotos.wsgi.application"
 AUTH_USER_MODEL = "api.User"
@@ -26,12 +27,17 @@ DEBUG = False
 SECRET_KEY_FILENAME = os.path.join(BASE_LOGS, "secret.key")
 SECRET_KEY = ""
 
+# analyze files to detect embedded media (e.g. in motion photos)
+FEATURE_PROCESS_EMBEDDED_MEDIA = (
+    os.getenv("FEATURE_PROCESS_EMBEDDED_MEDIA", "True") == "True"
+)
+
 if os.environ.get("SECRET_KEY"):
     SECRET_KEY = os.environ["SECRET_KEY"]
     print("use SECRET_KEY from env")
 
 if not SECRET_KEY and os.path.exists(SECRET_KEY_FILENAME):
-    with open(SECRET_KEY_FILENAME, "r") as f:
+    with open(SECRET_KEY_FILENAME) as f:
         SECRET_KEY = f.read().strip()
         print("use SECRET_KEY from file")
 
@@ -41,7 +47,7 @@ if not SECRET_KEY:
     with open(SECRET_KEY_FILENAME, "w") as f:
         f.write(get_random_secret_key())
         print("generate SECRET_KEY and save to file")
-    with open(SECRET_KEY_FILENAME, "r") as f:
+    with open(SECRET_KEY_FILENAME) as f:
         SECRET_KEY = f.read().strip()
         print("use SECRET_KEY from file")
 
@@ -74,15 +80,8 @@ INSTALLED_APPS = [
     "django_q",
 ]
 
-# Defaults to number of cores of the host system
-HEAVYWEIGHT_PROCESS_ENV = os.environ.get("HEAVYWEIGHT_PROCESS", None)
-HEAVYWEIGHT_PROCESS = (
-    int(HEAVYWEIGHT_PROCESS_ENV) if HEAVYWEIGHT_PROCESS_ENV.isnumeric() else None
-)
-
 Q_CLUSTER = {
     "name": "DjangORM",
-    "workers": HEAVYWEIGHT_PROCESS,
     "queue_limit": 50,
     "recycle": 50,
     "timeout": 10000000,
@@ -144,14 +143,6 @@ CONSTANCE_CONFIG = {
         "Comma delimited list of patterns to ignore (e.g. '@eaDir,#recycle' for synology devices)",
         str,
     ),
-    "HEAVYWEIGHT_PROCESS": (
-        HEAVYWEIGHT_PROCESS,
-        """
-        Number of workers, when scanning pictures. This setting can dramatically affect the ram usage.
-        Each worker needs 800MB of RAM. Change at your own will. Default is 1.
-        """,
-        int,
-    ),
     "MAP_API_PROVIDER": (
         os.environ.get("MAP_API_PROVIDER", "photon"),
         "Map Provider",
@@ -194,10 +185,6 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "EXCEPTION_HANDLER": "api.views.views.custom_exception_handler",
     "PAGE_SIZE": 20000,
-}
-REST_FRAMEWORK_EXTENSIONS = {
-    "DEFAULT_OBJECT_CACHE_KEY_FUNC": "rest_framework_extensions.utils.default_object_cache_key_func",
-    "DEFAULT_LIST_CACHE_KEY_FUNC": "rest_framework_extensions.utils.default_list_cache_key_func",
 }
 
 MIDDLEWARE = [

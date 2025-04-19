@@ -1,5 +1,6 @@
 import os
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django_q.tasks import Chain
@@ -10,7 +11,7 @@ from api.batch_jobs import batch_calculate_clip_embedding
 from api.ml_models import do_all_models_exist, download_models
 from api.models import Photo, User
 from api.serializers.simple import PhotoSuperSimpleSerializer
-from api.util import logger
+from api.util import is_valid_path, logger
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -94,14 +95,14 @@ class UserSerializer(serializers.ModelSerializer):
                 user = User.objects.create_user(**validated_data)
         else:
             user = User.objects.create_user(**validated_data)
-        logger.info("Created user {}".format(user.id))
+        logger.info(f"Created user {user.id}")
         return user
 
     def update(self, instance, validated_data):
         # user can only update the following
         if "password" in validated_data:
             password = validated_data.pop("password")
-            if password != "":
+            if password != "" and not settings.DEMO_SITE:
                 instance.set_password(password)
         if "avatar" in validated_data:
             instance.avatar = validated_data.pop("avatar")
@@ -139,14 +140,12 @@ class UserSerializer(serializers.ModelSerializer):
         if "confidence" in validated_data:
             instance.confidence = validated_data.pop("confidence")
             instance.save()
-            logger.info("Updated confidence for user {}".format(instance.confidence))
+            logger.info(f"Updated confidence for user {instance.confidence}")
         if "confidence_person" in validated_data:
             instance.confidence_person = validated_data.pop("confidence_person")
             instance.save()
             logger.info(
-                "Updated person album confidence for user {}".format(
-                    instance.confidence_person
-                )
+                f"Updated person album confidence for user {instance.confidence_person}"
             )
         if "semantic_search_topk" in validated_data:
             new_semantic_search_topk = validated_data.pop("semantic_search_topk")
@@ -163,45 +162,37 @@ class UserSerializer(serializers.ModelSerializer):
             instance.semantic_search_topk = new_semantic_search_topk
             instance.save()
             logger.info(
-                "Updated semantic_search_topk for user {}".format(
-                    instance.semantic_search_topk
-                )
+                f"Updated semantic_search_topk for user {instance.semantic_search_topk}"
             )
         if "favorite_min_rating" in validated_data:
             new_favorite_min_rating = validated_data.pop("favorite_min_rating")
             instance.favorite_min_rating = new_favorite_min_rating
             instance.save()
             logger.info(
-                "Updated favorite_min_rating for user {}".format(
-                    instance.favorite_min_rating
-                )
+                f"Updated favorite_min_rating for user {instance.favorite_min_rating}"
             )
         if "save_metadata_to_disk" in validated_data:
             instance.save_metadata_to_disk = validated_data.pop("save_metadata_to_disk")
             instance.save()
             logger.info(
-                "Updated save_metadata_to_disk for user {}".format(
-                    instance.save_metadata_to_disk
-                )
+                f"Updated save_metadata_to_disk for user {instance.save_metadata_to_disk}"
             )
         if "image_scale" in validated_data:
             new_image_scale = validated_data.pop("image_scale")
             instance.image_scale = new_image_scale
             instance.save()
-            logger.info("Updated image_scale for user {}".format(instance.image_scale))
+            logger.info(f"Updated image_scale for user {instance.image_scale}")
         if "datetime_rules" in validated_data:
             new_datetime_rules = validated_data.pop("datetime_rules")
             instance.datetime_rules = new_datetime_rules
             instance.save()
-            logger.info(
-                "Updated datetime_rules for user {}".format(instance.datetime_rules)
-            )
+            logger.info(f"Updated datetime_rules for user {instance.datetime_rules}")
         if "default_timezone" in validated_data:
             new_default_timezone = validated_data.pop("default_timezone")
             instance.default_timezone = new_default_timezone
             instance.save()
             logger.info(
-                "Updated default_timezone for user {}".format(instance.default_timezone)
+                f"Updated default_timezone for user {instance.default_timezone}"
             )
         if "public_sharing" in validated_data:
             instance.public_sharing = validated_data.pop("public_sharing")
@@ -356,18 +347,24 @@ class ManageUserSerializer(serializers.ModelSerializer):
     def update(self, instance: User, validated_data):
         if "password" in validated_data:
             password = validated_data.pop("password")
-            if password != "":
+            if password != "" and not settings.DEMO_SITE:
                 instance.set_password(password)
 
         if "scan_directory" in validated_data:
             new_scan_directory = validated_data.pop("scan_directory")
-            if new_scan_directory != "":
-                if os.path.exists(new_scan_directory):
-                    instance.scan_directory = new_scan_directory
+
+            if new_scan_directory:  # Ensure it's not an empty string
+                abs_new_scan_directory = os.path.abspath(new_scan_directory)
+
+                if not is_valid_path(abs_new_scan_directory, settings.DATA_ROOT):
+                    raise ValidationError(
+                        "Scan directory must be inside the data root."
+                    )
+
+                if os.path.exists(abs_new_scan_directory):
+                    instance.scan_directory = abs_new_scan_directory
                     logger.info(
-                        "Updated scan directory for user {}".format(
-                            instance.scan_directory
-                        )
+                        f"Updated scan directory for user {instance.scan_directory}"
                     )
                 else:
                     raise ValidationError("Scan directory does not exist")
